@@ -1,0 +1,6 @@
+{
+  "name": "Customer Support — AI Intelligence & Resolution Agent",
+  "description": "Production-grade customer support operations platform with recurring complaint intelligence and evidence-backed resolution agent.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

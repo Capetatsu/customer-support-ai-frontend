@@ -1,13 +1,6 @@
 // ParticleTargets.ts
-// Deterministic 2D/3D Point Generators for the 8 Master Visual Shapes:
-// 1. BRAIN: Recognizable anatomical lateral brain profile (cortex gyri, cerebellum, stem)
-// 2. SCATTER: Dispersed particle field representing fragmented raw customer signals
-// 3. CLUSTERS: 4 distinct semantic clustering hubs (Refund, Delivery, Payments, Quality)
-// 4. BULB: Unmistakable incandescent lightbulb (teardrop glass, glowing coiled filament, screw base)
-// 5. INVESTIGATION: 7-node connected investigation network (Intake, Classify, Order, Customer, Policy, Cases, Rec)
-// 6. RECOMMENDATION: Convergent directional funnel pointing toward the recommended action
-// 7. APPROVAL_GATE: Amber vertical decision barrier with paused flow
-// 8. RESOLUTION: Harmonic coherent concentric ring / verified resolution geometry
+// Deterministic target point generators for 7 core visual shapes
+// Each generator produces exactly PARTICLE_COUNT points
 
 export interface TargetPoint {
   x: number;
@@ -18,428 +11,321 @@ export interface TargetPoint {
   alpha: number;
 }
 
-// Pseudo-random deterministic generator with seed
-function createSeededRandom(seed = 1337) {
+// Seeded random for deterministic generation
+function createSeededRandom(seed: number) {
   let s = seed;
   return () => {
-    s = (s * 16807 + 0) % 2147483647;
+    s = (s * 16807) % 2147483647;
     return (s - 1) / 2147483646;
   };
 }
 
-// ----------------------------------------------------------------------
-// 1. BRAIN TARGETS (Hero: Recognizable Lateral Human Brain Profile)
-// ----------------------------------------------------------------------
-export function generateBrainPoints(count: number, width: number, height: number): TargetPoint[] {
+// Sample points from a 2D shape mask (returns normalized -1 to 1 coordinates)
+function sampleShapeMask(
+  count: number,
+  width: number,
+  height: number,
+  isInside: (x: number, y: number) => boolean,
+  seed: number
+): { x: number; y: number }[] {
+  const rand = createSeededRandom(seed);
+  const points: { x: number; y: number }[] = [];
+  const aspect = width / height;
+  const bounds = Math.max(width, height);
+
+  while (points.length < count) {
+    // Sample in normalized space
+    const nx = (rand() - 0.5) * 2 * aspect;
+    const ny = (rand() - 0.5) * 2;
+
+    if (isInside(nx, ny)) {
+      points.push({ x: nx, y: ny });
+    }
+  }
+
+  return points;
+}
+
+// ============================================================
+// 1. BRAIN - Organic lateral brain silhouette
+// ============================================================
+export function generateBrainTargets(count: number, width: number, height: number): TargetPoint[] {
   const rand = createSeededRandom(101);
   const points: TargetPoint[] = [];
 
   const isSmall = width < 1024;
-  const brainRadius = Math.min(width * (isSmall ? 0.38 : 0.22), height * 0.32, 220);
-  const centerX = isSmall ? 0 : Math.min(width * 0.18, 220); // Right side on desktop
+  const brainRadius = Math.min(width * (isSmall ? 0.35 : 0.2), height * 0.3, 200);
+  const centerX = isSmall ? 0 : -width * 0.15;
   const centerY = 0;
 
-  // Lateral silhouette boundary formula
-  const getProfile = (t: number) => {
-    const cosT = Math.cos(t);
-    const sinT = Math.sin(t);
-    let r = 1.0;
+  // Brain silhouette test function (lateral view)
+  const isInBrain = (nx: number, ny: number) => {
+    // Scale to brain radius
+    const x = nx * brainRadius * 1.2;
+    const y = ny * brainRadius * 0.9;
 
-    // High parietal crown (top)
-    if (sinT < -0.2) r = 1.06 + Math.abs(cosT) * 0.08;
-    // Frontal lobe expansion (right)
-    if (cosT > 0.35 && Math.abs(sinT) < 0.6) r = 1.14;
-    // Temporal lobe hook (bottom right)
-    if (cosT > 0.1 && sinT > 0.35) r = 0.90;
-    // Occipital lobe (left)
-    if (cosT < -0.3) r = 1.04;
-    // Cerebellar indentation (bottom left)
-    if (cosT < 0 && sinT > 0.4) r = 0.74;
+    // Brain shape: two lobes with center cleft
+    const leftLobe = Math.pow(x + brainRadius * 0.15, 2) / Math.pow(brainRadius * 0.7, 2) +
+                     Math.pow(y, 2) / Math.pow(brainRadius * 0.55, 2);
+    const rightLobe = Math.pow(x - brainRadius * 0.15, 2) / Math.pow(brainRadius * 0.7, 2) +
+                      Math.pow(y, 2) / Math.pow(brainRadius * 0.55, 2);
 
-    return {
-      x: cosT * brainRadius * 1.16 * r,
-      y: sinT * brainRadius * 0.92 * r,
-    };
+    // Cerebellum (bottom-left)
+    const cerebellum = Math.pow(x + brainRadius * 0.4, 2) / Math.pow(brainRadius * 0.25, 2) +
+                       Math.pow(y - brainRadius * 0.45, 2) / Math.pow(brainRadius * 0.2, 2);
+
+    // Brain stem
+    const stem = Math.pow(x + brainRadius * 0.05, 2) / Math.pow(brainRadius * 0.1, 2) +
+                 Math.pow(y - brainRadius * 0.6, 2) / Math.pow(brainRadius * 0.3, 2);
+
+    return leftLobe <= 1 || rightLobe <= 1 || cerebellum <= 1 || stem <= 1;
   };
 
-  for (let i = 0; i < count; i++) {
-    let x = 0;
-    let y = 0;
-    let z = 0;
-    let color = '#8052ff';
-    let size = 3.6 + rand() * 2.4;
-    let alpha = 0.85;
-
-    if (i < count * 0.26) {
-      // 1. Outer Perimeter Contour (crisp anatomical brain edge)
-      const t = (i / (count * 0.26)) * Math.PI * 2;
-      const prof = getProfile(t);
-      const depthAngle = (rand() - 0.5) * Math.PI * 0.7;
-      const ripple = Math.sin(t * 14) * 4;
-
-      x = centerX + prof.x * Math.cos(depthAngle * 0.35) + ripple;
-      y = centerY + prof.y + ripple * 0.6;
-      z = Math.sin(depthAngle) * brainRadius * 0.35;
-
-      // Color coding: Amber top crown, White highlights, Violet body
-      if (y < -brainRadius * 0.36) {
-        color = rand() > 0.3 ? '#ffb829' : '#ffdb4d'; // Amber crown
-      } else if (x > centerX + brainRadius * 0.5) {
-        color = '#ffb829'; // Frontal apex
-      } else if (rand() < 0.3) {
-        color = '#ffffff';
-      } else {
-        color = '#8052ff';
-      }
-    } else if (i < count * 0.62) {
-      // 2. Convoluted Sulci & Gyri Folding Ribbons
-      const sulcusIdx = i % 7;
-      const prog = rand();
-      const depthAngle = (rand() - 0.5) * Math.PI * 0.65;
-
-      let sx = 0;
-      let sy = 0;
-
-      if (sulcusIdx === 0) {
-        // Central Sulcus (crown to lateral fissure)
-        sx = -brainRadius * 0.05 + Math.sin(prog * Math.PI * 3) * 12;
-        sy = -brainRadius * 0.65 + prog * brainRadius * 0.85;
-      } else if (sulcusIdx === 1) {
-        // Precentral Gyrus (parallel frontal)
-        sx = brainRadius * 0.22 + Math.cos(prog * Math.PI * 3.5) * 10;
-        sy = -brainRadius * 0.6 + prog * brainRadius * 0.8;
-      } else if (sulcusIdx === 2) {
-        // Sylvian Fissure (horizontal lateral groove)
-        sx = -brainRadius * 0.35 + prog * brainRadius * 0.8;
-        sy = brainRadius * 0.10 + Math.sin(prog * Math.PI * 2.5) * 10;
-      } else if (sulcusIdx === 3) {
-        // Temporal convolution
-        sx = -brainRadius * 0.25 + prog * brainRadius * 0.7;
-        sy = brainRadius * 0.26 + Math.cos(prog * Math.PI * 3) * 8;
-      } else if (sulcusIdx === 4) {
-        // Parieto-occipital fissure
-        sx = -brainRadius * 0.42 + Math.sin(prog * Math.PI * 2) * 14;
-        sy = -brainRadius * 0.5 + prog * brainRadius * 0.65;
-      } else if (sulcusIdx === 5) {
-        // Superior frontal gyrus
-        sx = brainRadius * 0.12 + prog * brainRadius * 0.48;
-        sy = -brainRadius * 0.42 + Math.sin(prog * Math.PI * 3) * 10;
-      } else {
-        // Inferior frontal
-        sx = brainRadius * 0.2 + prog * brainRadius * 0.4;
-        sy = -brainRadius * 0.12 + Math.cos(prog * Math.PI * 3) * 10;
-      }
-
-      x = centerX + sx + (rand() - 0.5) * 8;
-      y = centerY + sy + (rand() - 0.5) * 8;
-      z = Math.sin(depthAngle) * brainRadius * 0.34;
-
-      if (y < -brainRadius * 0.25) {
-        color = rand() > 0.35 ? '#ffb829' : '#ffffff';
-      } else if (sulcusIdx === 2) {
-        color = '#2de0c2'; // Vivid cyan in Sylvian fissure
-      } else if (rand() < 0.25) {
-        color = '#ffffff';
-      } else {
-        color = '#8052ff';
-      }
-    } else if (i < count * 0.80) {
-      // 3. Cerebellum (Tucked horizontal folia ripples under occipital lobe)
-      const layer = i % 10;
-      const prog = rand();
-      const layerY = brainRadius * 0.34 + (layer / 10) * brainRadius * 0.28;
-      const layerWidth = Math.sin((layer / 10) * Math.PI) * brainRadius * 0.44;
-
-      const cx = -brainRadius * 0.38 + (prog - 0.5) * layerWidth;
-      const ripple = Math.sin(prog * Math.PI * 8) * 3;
-      const depthAngle = (rand() - 0.5) * Math.PI * 0.65;
-
-      x = centerX + cx;
-      y = centerY + layerY + ripple;
-      z = Math.sin(depthAngle) * brainRadius * 0.24;
-
-      color = rand() > 0.4 ? '#ffb829' : '#8052ff';
-      size = 3.2 + rand() * 2.0;
-    } else if (i < count * 0.88) {
-      // 4. Brain Stem (Pons & Medulla descending column)
-      const prog = (i - count * 0.80) / (count * 0.08);
-      const angle = rand() * Math.PI * 2;
-      const stemR = (brainRadius * 0.09) * (1 - prog * 0.25);
-
-      x = centerX - brainRadius * 0.05 + Math.cos(angle) * stemR;
-      y = centerY + brainRadius * 0.40 + prog * (brainRadius * 0.44);
-      z = Math.sin(angle) * stemR * 0.8;
-
-      color = prog > 0.5 ? '#15846e' : '#8052ff';
-      size = 3.0 + rand() * 1.8;
-    } else {
-      // 5. Ambient Cortex Internal Glow
-      const u = rand();
-      const v = rand();
-      const prof = getProfile(u * Math.PI * 2);
-      const rad = Math.pow(v, 0.6) * 0.85;
-      const depthAngle = (rand() - 0.5) * Math.PI * 0.75;
-
-      x = centerX + prof.x * rad;
-      y = centerY + prof.y * rad;
-      z = Math.sin(depthAngle) * brainRadius * 0.30 * rad;
-
-      color = rand() > 0.5 ? '#8052ff' : '#2de0c2';
-      size = 3.2 + rand() * 2.0;
-    }
-
-    points.push({ x, y, z, color, size, alpha });
-  }
-
-  return points;
-}
-
-// ----------------------------------------------------------------------
-// 2. SCATTER TARGETS (Scene 2: Dispersed Fragmented Customer Signals)
-// ----------------------------------------------------------------------
-export function generateScatterPoints(count: number, width: number, height: number): TargetPoint[] {
-  const rand = createSeededRandom(202);
-  const points: TargetPoint[] = [];
-
-  const spreadX = width * 0.44;
-  const spreadY = height * 0.38;
+  const samples = sampleShapeMask(count, width, height, isInBrain, 101);
 
   for (let i = 0; i < count; i++) {
-    // Distributed in organic floating drifts across the viewport
-    const u = rand();
-    const v = rand();
-    const angle = u * Math.PI * 2;
-    const dist = Math.pow(v, 0.55);
+    const s = samples[i];
+    const depthAngle = (rand() - 0.5) * Math.PI * 0.7;
+    const ripple = Math.sin((s.x + s.y) * 20) * 3;
 
-    const x = Math.cos(angle) * spreadX * dist + (rand() - 0.5) * 40;
-    const y = Math.sin(angle) * spreadY * dist + (rand() - 0.5) * 40;
-    const z = (rand() - 0.5) * 350;
+    const x = centerX + s.x * brainRadius * 1.1 + ripple;
+    const y = centerY + s.y * brainRadius * 0.9 + ripple * 0.5;
+    const z = Math.sin(depthAngle) * brainRadius * 0.35;
 
     let color = '#8052ff';
-    const r = rand();
-    if (r > 0.75) color = '#ffb829'; // Amber signal
-    else if (r > 0.55) color = '#2de0c2'; // Teal signal
-    else if (r > 0.40) color = '#ffffff'; // White signal
-    else color = '#8052ff'; // Violet signal
-
-    const size = 3.2 + rand() * 2.2;
-    const alpha = 0.55 + rand() * 0.40;
-
-    points.push({ x, y, z, color, size, alpha });
-  }
-
-  return points;
-}
-
-// ----------------------------------------------------------------------
-// 3. CLUSTERS TARGETS (Scene 3 & 4: 4 Distinct Semantic Pattern Hubs)
-// ----------------------------------------------------------------------
-export function generateClusterPoints(count: number, width: number, height: number): TargetPoint[] {
-  const rand = createSeededRandom(303);
-  const points: TargetPoint[] = [];
-
-  const isSmall = width < 1024;
-  const spanX = Math.min(width * (isSmall ? 0.35 : 0.28), 320);
-  const spanY = Math.min(height * 0.26, 180);
-  const clusterCenterX = isSmall ? 0 : Math.min(width * 0.12, 160);
-
-  // 4 Cluster Centers:
-  // 1. Refund Delays (Top-Right, Amber Spike)
-  // 2. Delivery Stalls (Bottom-Right, Warm Amber/Gold)
-  // 3. Payment Disputes (Top-Left, Violet)
-  // 4. Transit Damage (Bottom-Left, Teal)
-  const hubs = [
-    { x: clusterCenterX + spanX * 0.65, y: -spanY * 0.65, z: 20, color: '#ffb829', radius: 72, name: 'Refund' },
-    { x: clusterCenterX + spanX * 0.70, y: spanY * 0.60, z: -10, color: '#ff8e52', radius: 64, name: 'Delivery' },
-    { x: clusterCenterX - spanX * 0.60, y: -spanY * 0.55, z: 15, color: '#8052ff', radius: 58, name: 'Payments' },
-    { x: clusterCenterX - spanX * 0.55, y: spanY * 0.65, z: -15, color: '#2de0c2', radius: 54, name: 'Damage' },
-  ];
-
-  for (let i = 0; i < count; i++) {
-    // 78% of particles gravitate densely into the 4 hubs; 22% form connective satellite bridges
-    if (i < count * 0.78) {
-      const hubIdx = i % 4;
-      const h = hubs[hubIdx];
-      const r = Math.pow(rand(), 0.65) * h.radius;
-      const theta = rand() * Math.PI * 2;
-
-      // Slight elliptical clustering
-      const x = h.x + Math.cos(theta) * r * 1.15;
-      const y = h.y + Math.sin(theta) * r * 0.95;
-      const z = h.z + (rand() - 0.5) * 45;
-
-      const color = rand() > 0.25 ? h.color : '#ffffff';
-      const size = 3.6 + rand() * 2.6;
-      const alpha = 0.85;
-
-      points.push({ x, y, z, color, size, alpha });
-    } else {
-      // Connective orbital bridges between clusters
-      const h1 = hubs[i % 4];
-      const h2 = hubs[(i + 1) % 4];
-      const t = rand();
-
-      const x = h1.x + (h2.x - h1.x) * t + (rand() - 0.5) * 25;
-      const y = h1.y + (h2.y - h1.y) * t + (rand() - 0.5) * 25;
-      const z = (rand() - 0.5) * 60;
-
-      const color = rand() > 0.5 ? '#8052ff' : '#2de0c2';
-      const size = 2.8 + rand() * 1.6;
-      const alpha = 0.60;
-
-      points.push({ x, y, z, color, size, alpha });
-    }
-  }
-
-  return points;
-}
-
-// ----------------------------------------------------------------------
-// 4. BULB TARGETS (Scene 5 & 6: Iconic Incandescent Light Bulb)
-// ----------------------------------------------------------------------
-export function generateBulbPoints(count: number, width: number, height: number): TargetPoint[] {
-  const rand = createSeededRandom(404);
-  const points: TargetPoint[] = [];
-
-  const isSmall = width < 1024;
-  const bulbScale = Math.min(width * (isSmall ? 0.36 : 0.24), height * 0.34, 220);
-  const centerX = isSmall ? 0 : Math.min(width * 0.16, 200); // Placed right on desktop
-  const centerY = -10;
-
-  for (let i = 0; i < count; i++) {
-    let lx = 0;
-    let ly = 0;
-    let lz = 0;
-    let color = '#ffb829';
-    let size = 3.8 + rand() * 2.4;
-    let alpha = 0.85;
-
-    if (i < count * 0.44) {
-      // 1. Bulb Teardrop Glass Envelope (Spherical top dome tapering into neck)
-      const t = (i / (count * 0.44)) * Math.PI * 1.55 - Math.PI * 0.28;
-      const a = rand() * Math.PI * 2;
-      let r = bulbScale * 0.48;
-      let neckY = -Math.sin(t) * r;
-
-      if (neckY > bulbScale * 0.14) {
-        const taper = 1 - (neckY - bulbScale * 0.14) / (bulbScale * 0.34) * 0.52;
-        r *= Math.max(0.44, taper);
-      }
-
-      lx = Math.cos(a) * Math.cos(t) * r;
-      ly = neckY;
-      lz = Math.sin(a) * Math.cos(t) * r * 0.80;
-
-      if (ly < -bulbScale * 0.18) {
-        color = '#ffb829'; // Glowing amber dome
-      } else if (ly < bulbScale * 0.12) {
-        color = rand() > 0.3 ? '#ffffff' : '#ffb829'; // White glass glare
-      } else {
-        color = '#8052ff'; // Violet neck
-      }
-    } else if (i < count * 0.68) {
-      // 2. Coiled Incandescent Tungsten Filament (Lead rods + M-loop bridge)
-      const sub = i - count * 0.44;
-      const subTotal = count * 0.24;
-
-      if (sub < subTotal * 0.25) {
-        // Left lead support post
-        const p = sub / (subTotal * 0.25);
-        lx = -bulbScale * 0.12;
-        ly = bulbScale * 0.24 - p * bulbScale * 0.38;
-        color = '#ffffff';
-      } else if (sub < subTotal * 0.50) {
-        // Right lead support post
-        const p = (sub - subTotal * 0.25) / (subTotal * 0.25);
-        lx = bulbScale * 0.12;
-        ly = bulbScale * 0.24 - p * bulbScale * 0.38;
-        color = '#ffffff';
-      } else {
-        // Glowing looped tungsten filament coil
-        const p = (sub - subTotal * 0.50) / (subTotal * 0.50);
-        const arch = Math.sin(p * Math.PI);
-        const coilWave = Math.sin(p * Math.PI * 12) * 6;
-
-        lx = (-0.14 + p * 0.28) * bulbScale;
-        ly = -bulbScale * 0.14 - arch * bulbScale * 0.20 + coilWave * 0.3;
-        lz = Math.cos(p * Math.PI * 12) * 6;
-
-        color = rand() > 0.2 ? '#ffdb4d' : '#ffffff'; // Blazing incandescent gold/white
-        size = 4.8 + rand() * 2.6;
-      }
-    } else if (i < count * 0.90) {
-      // 3. Threaded Screw Collar (Edison metal base with helical ridges)
-      const prog = (i - count * 0.68) / (count * 0.22);
-      const collarY = bulbScale * 0.30 + prog * bulbScale * 0.30;
-      const threadAngle = prog * Math.PI * 10;
-      const collarR = bulbScale * 0.19;
-      const threadWave = Math.sin(threadAngle) * 4;
-      const a = rand() * Math.PI * 2;
-
-      lx = Math.cos(a) * (collarR + threadWave);
-      ly = collarY;
-      lz = Math.sin(a) * (collarR + threadWave) * 0.85;
-
-      color = '#8052ff'; // Violet screw metal
-    } else {
-      // 4. Electrical Contact Base Tip
-      const prog = (i - count * 0.90) / (count * 0.10);
-      const tipY = bulbScale * 0.60 + prog * bulbScale * 0.12;
-      const tipR = bulbScale * 0.11 * (1 - prog * 0.8);
-      const a = rand() * Math.PI * 2;
-
-      lx = Math.cos(a) * tipR;
-      ly = tipY;
-      lz = Math.sin(a) * tipR * 0.85;
-
-      color = '#15846e'; // Deep verdant contact point
-    }
+    if (s.y < -0.3) color = rand() > 0.3 ? '#ffb829' : '#ffdb4d'; // Amber crown
+    else if (s.x > 0.4) color = '#ffb829'; // Frontal
+    else if (rand() < 0.25) color = '#ffffff';
 
     points.push({
-      x: centerX + lx,
-      y: centerY + ly,
-      z: lz,
+      x, y, z,
       color,
-      size,
-      alpha,
+      size: 3.5 + rand() * 2.2,
+      alpha: 0.85,
     });
   }
 
   return points;
 }
 
-// ----------------------------------------------------------------------
-// 5. INVESTIGATION TARGETS (Scene 7 & 8: 7-Node Reasoner Graph)
-// ----------------------------------------------------------------------
-export function generateInvestigationPoints(count: number, width: number, height: number): TargetPoint[] {
+// ============================================================
+// 2. SCATTER - Dispersed organic field
+// ============================================================
+export function generateScatterTargets(count: number, width: number, height: number): TargetPoint[] {
+  const rand = createSeededRandom(202);
+  const points: TargetPoint[] = [];
+
+  const spreadX = width * 0.5;
+  const spreadY = height * 0.45;
+
+  for (let i = 0; i < count; i++) {
+    const u = rand();
+    const v = rand();
+    const angle = u * Math.PI * 2;
+    const dist = Math.pow(v, 0.5);
+
+    const x = Math.cos(angle) * spreadX * dist + (rand() - 0.5) * 50;
+    const y = Math.sin(angle) * spreadY * dist + (rand() - 0.5) * 50;
+    const z = (rand() - 0.5) * 400;
+
+    let color = '#8052ff';
+    const r = rand();
+    if (r > 0.75) color = '#ffb829';
+    else if (r > 0.55) color = '#2de0c2';
+    else if (r > 0.4) color = '#ffffff';
+
+    points.push({
+      x, y, z,
+      color,
+      size: 3 + rand() * 2,
+      alpha: 0.5 + rand() * 0.4,
+    });
+  }
+
+  return points;
+}
+
+// ============================================================
+// 3. CLUSTERS - 4 semantic hubs
+// ============================================================
+export function generateClusterTargets(count: number, width: number, height: number): TargetPoint[] {
+  const rand = createSeededRandom(303);
+  const points: TargetPoint[] = [];
+
+  const isSmall = width < 1024;
+  const spanX = Math.min(width * (isSmall ? 0.4 : 0.3), 350);
+  const spanY = Math.min(height * 0.3, 200);
+  const cx = isSmall ? 0 : -width * 0.1;
+
+  // 4 cluster centers
+  const hubs = [
+    { x: cx + spanX * 0.6, y: -spanY * 0.55, z: 25, color: '#ffb829', radius: 80 }, // Refund
+    { x: cx + spanX * 0.65, y: spanY * 0.55, z: -15, color: '#ff8e52', radius: 70 }, // Delivery
+    { x: cx - spanX * 0.55, y: -spanY * 0.5, z: 20, color: '#8052ff', radius: 70 }, // Payments
+    { x: cx - spanX * 0.5, y: spanY * 0.6, z: -20, color: '#2de0c2', radius: 65 }, // Quality
+  ];
+
+  for (let i = 0; i < count; i++) {
+    if (i < count * 0.75) {
+      // 75% in hubs
+      const hubIdx = i % 4;
+      const h = hubs[hubIdx];
+      const r = Math.pow(rand(), 0.6) * h.radius;
+      const theta = rand() * Math.PI * 2;
+
+      const x = h.x + Math.cos(theta) * r * 1.1;
+      const y = h.y + Math.sin(theta) * r * 0.9;
+      const z = h.z + (rand() - 0.5) * 50;
+
+      points.push({
+        x, y, z,
+        color: rand() > 0.2 ? h.color : '#ffffff',
+        size: 3.5 + rand() * 2.5,
+        alpha: 0.88,
+      });
+    } else {
+      // 25% bridges between clusters
+      const h1 = hubs[i % 4];
+      const h2 = hubs[(i + 1) % 4];
+      const t = rand();
+
+      points.push({
+        x: h1.x + (h2.x - h1.x) * t + (rand() - 0.5) * 30,
+        y: h1.y + (h2.y - h1.y) * t + (rand() - 0.5) * 30,
+        z: (rand() - 0.5) * 70,
+        color: rand() > 0.5 ? '#8052ff' : '#2de0c2',
+        size: 2.8 + rand() * 1.5,
+        alpha: 0.6,
+      });
+    }
+  }
+
+  return points;
+}
+
+// ============================================================
+// 4. BULB - Incandescent light bulb
+// ============================================================
+export function generateBulbTargets(count: number, width: number, height: number): TargetPoint[] {
+  const rand = createSeededRandom(404);
+  const points: TargetPoint[] = [];
+
+  const isSmall = width < 1024;
+  const bulbScale = Math.min(width * (isSmall ? 0.35 : 0.22), height * 0.32, 200);
+  const centerX = isSmall ? 0 : -width * 0.12;
+  const centerY = -10;
+
+  for (let i = 0; i < count; i++) {
+    let lx = 0, ly = 0, lz = 0;
+    let color = '#ffb829';
+    let size = 3.5 + rand() * 2.2;
+    let alpha = 0.85;
+
+    if (i < count * 0.4) {
+      // Bulb envelope - teardrop shape
+      const t = (i / (count * 0.4)) * Math.PI * 1.5 - Math.PI * 0.25;
+      const a = rand() * Math.PI * 2;
+      let r = bulbScale * 0.45;
+      let neckY = -Math.sin(t) * r;
+
+      if (neckY > bulbScale * 0.1) {
+        const taper = 1 - (neckY - bulbScale * 0.1) / (bulbScale * 0.35) * 0.6;
+        r *= Math.max(0.35, taper);
+      }
+
+      lx = Math.cos(a) * Math.cos(t) * r;
+      ly = neckY;
+      lz = Math.sin(a) * Math.cos(t) * r * 0.75;
+
+      if (ly < -bulbScale * 0.15) color = '#ffb829';
+      else if (ly < bulbScale * 0.1) color = rand() > 0.3 ? '#ffffff' : '#ffb829';
+      else color = '#8052ff';
+    } else if (i < count * 0.6) {
+      // Filament
+      const sub = i - count * 0.4;
+      const subTotal = count * 0.2;
+      const p = sub / subTotal;
+
+      if (p < 0.25) {
+        lx = -bulbScale * 0.1;
+        ly = bulbScale * 0.2 - p * bulbScale * 0.35;
+        color = '#ffffff';
+      } else if (p < 0.5) {
+        lx = bulbScale * 0.1;
+        ly = bulbScale * 0.2 - (p - 0.25) / 0.25 * bulbScale * 0.35;
+        color = '#ffffff';
+      } else {
+        const pp = (p - 0.5) / 0.5;
+        const arch = Math.sin(pp * Math.PI);
+        const coil = Math.sin(pp * Math.PI * 10) * 5;
+
+        lx = (-0.12 + pp * 0.24) * bulbScale;
+        ly = -bulbScale * 0.12 - arch * bulbScale * 0.18 + coil * 0.25;
+        lz = Math.cos(pp * Math.PI * 10) * 5;
+        color = rand() > 0.2 ? '#ffdb4d' : '#ffffff';
+        size = 4.5 + rand() * 2.5;
+      }
+    } else if (i < count * 0.85) {
+      // Screw collar
+      const prog = (i - count * 0.6) / (count * 0.25);
+      const collarY = bulbScale * 0.25 + prog * bulbScale * 0.25;
+      const angle = prog * Math.PI * 9;
+      const r = bulbScale * 0.18;
+      const wave = Math.sin(angle) * 3;
+      const a = rand() * Math.PI * 2;
+
+      lx = Math.cos(a) * (r + wave);
+      ly = collarY;
+      lz = Math.sin(a) * (r + wave) * 0.8;
+      color = '#8052ff';
+    } else {
+      // Base contact
+      const prog = (i - count * 0.85) / (count * 0.15);
+      const tipY = bulbScale * 0.5 + prog * bulbScale * 0.12;
+      const tipR = bulbScale * 0.1 * (1 - prog * 0.8);
+      const a = rand() * Math.PI * 2;
+
+      lx = Math.cos(a) * tipR;
+      ly = tipY;
+      lz = Math.sin(a) * tipR * 0.8;
+      color = '#15846e';
+    }
+
+    points.push({
+      x: centerX + lx,
+      y: centerY + ly,
+      z: lz,
+      color, size, alpha,
+    });
+  }
+
+  return points;
+}
+
+// ============================================================
+// 5. INVESTIGATION - 7-node network
+// ============================================================
+export function generateInvestigationTargets(count: number, width: number, height: number): TargetPoint[] {
   const rand = createSeededRandom(505);
   const points: TargetPoint[] = [];
 
   const isSmall = width < 1024;
-  const netW = Math.min(width * (isSmall ? 0.40 : 0.28), 340);
-  const netH = Math.min(height * 0.34, 220);
-  const centerX = isSmall ? 0 : Math.min(width * 0.16, 200);
+  const netW = Math.min(width * (isSmall ? 0.42 : 0.3), 360);
+  const netH = Math.min(height * 0.38, 240);
+  const centerX = isSmall ? 0 : -width * 0.1;
   const centerY = 0;
 
-  // 7 Structured Reasoner Nodes:
-  // Node 0: INTAKE (top-center)
-  // Node 1: CLASSIFY (mid-left)
-  // Node 2: ORDER CONTEXT (mid-right)
-  // Node 3: CUSTOMER 360 (center)
-  // Node 4: POLICY ENGINE (lower-left)
-  // Node 5: SIMILAR CASES (lower-right)
-  // Node 6: REASONING CORE (bottom-center)
+  // 7 nodes
   const nodes = [
-    { x: centerX, y: centerY - netH * 0.70, z: 20, color: '#8052ff', label: 'Intake' },
-    { x: centerX - netW * 0.55, y: centerY - netH * 0.25, z: -10, color: '#2de0c2', label: 'Classify' },
-    { x: centerX + netW * 0.55, y: centerY - netH * 0.25, z: 10, color: '#2de0c2', label: 'Order' },
-    { x: centerX, y: centerY, z: 25, color: '#ffffff', label: 'Customer360' },
-    { x: centerX - netW * 0.45, y: centerY + netH * 0.45, z: -15, color: '#15846e', label: 'Policy' },
-    { x: centerX + netW * 0.45, y: centerY + netH * 0.45, z: 15, color: '#8052ff', label: 'Similar' },
-    { x: centerX, y: centerY + netH * 0.75, z: 30, color: '#ffb829', label: 'Reason' },
+    { x: centerX, y: centerY - netH * 0.7, z: 20, color: '#8052ff' },      // Intake
+    { x: centerX - netW * 0.55, y: centerY - netH * 0.25, z: -10, color: '#2de0c2' }, // Classify
+    { x: centerX + netW * 0.55, y: centerY - netH * 0.25, z: 10, color: '#2de0c2' },  // Order
+    { x: centerX, y: centerY, z: 25, color: '#ffffff' },                     // Customer360
+    { x: centerX - netW * 0.45, y: centerY + netH * 0.4, z: -15, color: '#15846e' },   // Policy
+    { x: centerX + netW * 0.45, y: centerY + netH * 0.4, z: 15, color: '#8052ff' },   // Similar
+    { x: centerX, y: centerY + netH * 0.7, z: 30, color: '#ffb829' },       // Reason
   ];
 
-  // Graph edges connecting nodes
   const edges = [
     [0, 1], [0, 2], [0, 3],
     [1, 3], [2, 3],
@@ -448,166 +334,107 @@ export function generateInvestigationPoints(count: number, width: number, height
   ];
 
   for (let i = 0; i < count; i++) {
-    if (i < count * 0.55) {
-      // 55% Clustered into the 7 reasoner nodes
+    if (i < count * 0.5) {
+      // 50% in nodes
       const nIdx = i % 7;
       const node = nodes[nIdx];
-      const r = Math.pow(rand(), 0.7) * (nIdx === 6 || nIdx === 3 ? 42 : 32);
+      const r = Math.pow(rand(), 0.65) * (nIdx === 3 || nIdx === 6 ? 45 : 35);
       const theta = rand() * Math.PI * 2;
 
-      const x = node.x + Math.cos(theta) * r;
-      const y = node.y + Math.sin(theta) * r;
-      const z = node.z + (rand() - 0.5) * 30;
-
-      const color = rand() > 0.3 ? node.color : '#ffffff';
-      const size = 3.8 + rand() * 2.4;
-      const alpha = 0.90;
-
-      points.push({ x, y, z, color, size, alpha });
+      points.push({
+        x: node.x + Math.cos(theta) * r,
+        y: node.y + Math.sin(theta) * r,
+        z: node.z + (rand() - 0.5) * 35,
+        color: rand() > 0.3 ? node.color : '#ffffff',
+        size: 3.8 + rand() * 2.2,
+        alpha: 0.9,
+      });
     } else {
-      // 45% Flowing along graph edges like active data packets
-      const edgeIdx = i % edges.length;
-      const [fromIdx, toIdx] = edges[edgeIdx];
-      const n1 = nodes[fromIdx];
-      const n2 = nodes[toIdx];
-      const t = rand();
+      // 50% on edges
+      const [from, to] = edges[i % edges.length];
+      const n1 = nodes[from];
+      const n2 = nodes[to];
+      const t = Math.pow(rand(), 0.7);
 
-      const x = n1.x + (n2.x - n1.x) * t + (rand() - 0.5) * 12;
-      const y = n1.y + (n2.y - n1.y) * t + (rand() - 0.5) * 12;
-      const z = n1.z + (n2.z - n1.z) * t + (rand() - 0.5) * 12;
-
-      const color = rand() > 0.5 ? n1.color : n2.color;
-      const size = 3.0 + rand() * 1.8;
-      const alpha = 0.75;
-
-      points.push({ x, y, z, color, size, alpha });
+      points.push({
+        x: n1.x + (n2.x - n1.x) * t + (rand() - 0.5) * 10,
+        y: n1.y + (n2.y - n1.y) * t + (rand() - 0.5) * 10,
+        z: n1.z + (n2.z - n1.z) * t + (rand() - 0.5) * 10,
+        color: rand() > 0.4 ? n2.color : n1.color,
+        size: 3 + rand() * 1.8,
+        alpha: 0.75,
+      });
     }
   }
 
   return points;
 }
 
-// ----------------------------------------------------------------------
-// 6. RECOMMENDATION TARGETS (Scene 9: Convergent Funnel)
-// ----------------------------------------------------------------------
-export function generateRecommendationPoints(count: number, width: number, height: number): TargetPoint[] {
+// ============================================================
+// 6. RECOMMENDATION - Convergent funnel
+// ============================================================
+export function generateRecommendationTargets(count: number, width: number, height: number): TargetPoint[] {
   const rand = createSeededRandom(606);
   const points: TargetPoint[] = [];
 
   const isSmall = width < 1024;
-  const radius = Math.min(width * (isSmall ? 0.36 : 0.22), height * 0.30, 200);
-  const centerX = isSmall ? 0 : Math.min(width * 0.16, 200);
+  const radius = Math.min(width * (isSmall ? 0.38 : 0.24), height * 0.32, 210);
+  const centerX = isSmall ? 0 : -width * 0.12;
   const centerY = 0;
 
   for (let i = 0; i < count; i++) {
-    // Dynamic chevron / convergent directional arrowhead pointing forward
-    const t = rand(); // 0 (tail) to 1 (arrowhead tip)
+    const t = rand(); // 0 = tail, 1 = tip
     const side = rand() > 0.5 ? 1 : -1;
 
-    // Arrowhead arm profile
-    const armX = (t - 0.4) * radius * 1.2;
-    const armY = side * (1 - t) * radius * 0.85;
-    const spread = (rand() - 0.5) * 18;
+    // Chevron arms converging to center
+    const armX = (t - 0.35) * radius * 1.3;
+    const armY = side * (1 - t) * radius * 0.9;
+    const spread = (rand() - 0.5) * 20;
 
     const x = centerX + armX + spread;
     const y = centerY + armY + spread;
-    const z = (rand() - 0.5) * 40;
+    const z = (rand() - 0.5) * 50;
 
     let color = '#8052ff';
-    if (t > 0.7) color = '#ffb829'; // Amber tip
-    else if (t > 0.4) color = '#ffffff'; // White core
-    else color = '#8052ff';
+    if (t > 0.75) color = '#ffb829';
+    else if (t > 0.45) color = '#ffffff';
 
-    const size = 3.6 + rand() * 2.4;
-    const alpha = 0.85;
-
-    points.push({ x, y, z, color, size, alpha });
+    points.push({ x, y, z, color, size: 3.5 + rand() * 2.2, alpha: 0.88 });
   }
 
   return points;
 }
 
-// ----------------------------------------------------------------------
-// 7. APPROVAL GATE TARGETS (Scene 10: Amber Decision Barrier)
-// ----------------------------------------------------------------------
-export function generateApprovalGatePoints(count: number, width: number, height: number): TargetPoint[] {
+// ============================================================
+// 7. RESOLUTION - Concentric harmonic rings
+// ============================================================
+export function generateResolutionTargets(count: number, width: number, height: number): TargetPoint[] {
   const rand = createSeededRandom(707);
   const points: TargetPoint[] = [];
 
-  const isSmall = width < 1024;
-  const gateHeight = Math.min(height * 0.70, 480);
-  const gateX = isSmall ? 0 : Math.min(width * 0.16, 200);
+  const radius = Math.min(width * 0.22, height * 0.3, 200);
+  const centerX = 0;
   const centerY = 0;
 
   for (let i = 0; i < count; i++) {
-    let x = 0;
-    let y = 0;
-    let z = 0;
-    let color = '#ffb829';
-    let size = 3.8 + rand() * 2.4;
-    let alpha = 0.90;
-
-    if (i < count * 0.65) {
-      // 1. Vertical Amber Boundary Columns (The Decision Wall)
-      const col = (i % 3) - 1; // -1, 0, 1
-      const prog = (i / (count * 0.65));
-      const py = (prog - 0.5) * gateHeight;
-
-      x = gateX + col * 18 + (rand() - 0.5) * 8;
-      y = centerY + py;
-      z = (rand() - 0.5) * 35;
-
-      color = rand() > 0.25 ? '#ffb829' : '#ffffff';
-    } else {
-      // 2. Paused / Hovering Particle Swarm before the Gate
-      const side = rand() > 0.6 ? 1 : -1;
-      const dist = 30 + rand() * 120;
-      const angle = (rand() - 0.5) * Math.PI * 0.8;
-
-      x = gateX - dist;
-      y = centerY + Math.sin(angle) * (gateHeight * 0.45);
-      z = (rand() - 0.5) * 60;
-
-      color = rand() > 0.5 ? '#8052ff' : '#ffb829';
-      alpha = 0.75;
-    }
-
-    points.push({ x, y, z, color, size, alpha });
-  }
-
-  return points;
-}
-
-// ----------------------------------------------------------------------
-// 8. RESOLUTION TARGETS (Scene 11: Concentric Harmonic Resolution Ring)
-// ----------------------------------------------------------------------
-export function generateResolutionPoints(count: number, width: number, height: number): TargetPoint[] {
-  const rand = createSeededRandom(808);
-  const points: TargetPoint[] = [];
-
-  const radius = Math.min(width * 0.22, height * 0.30, 200);
-  const centerX = 0; // Centered
-  const centerY = 0;
-
-  for (let i = 0; i < count; i++) {
-    // 3 Concentric Rings of verified resolution
-    const ringIdx = i % 3;
-    const rBase = ringIdx === 0 ? radius : ringIdx === 1 ? radius * 0.68 : radius * 0.36;
+    const ringIdx = i % 4;
+    const rBase = ringIdx === 0 ? radius : ringIdx === 1 ? radius * 0.7 : ringIdx === 2 ? radius * 0.4 : radius * 0.12;
     const theta = rand() * Math.PI * 2;
-    const wave = Math.sin(theta * 8) * 4;
+    const wave = Math.sin(theta * 10) * 3;
 
-    const r = rBase + wave + (rand() - 0.5) * 8;
+    const r = rBase + wave + (rand() - 0.5) * 6;
     const x = centerX + Math.cos(theta) * r;
     const y = centerY + Math.sin(theta) * r;
     const z = (rand() - 0.5) * 35;
 
-    let color = '#15846e'; // Deep Verdant (Safe / Resolved)
+    let color = '#15846e';
     if (ringIdx === 0) color = rand() > 0.3 ? '#8052ff' : '#2de0c2';
     else if (ringIdx === 1) color = rand() > 0.3 ? '#15846e' : '#2de0c2';
-    else color = '#ffffff';
+    else if (ringIdx === 2) color = '#ffffff';
+    else color = '#ffb829';
 
-    const size = 3.6 + rand() * 2.2;
-    const alpha = 0.85;
+    const size = ringIdx === 3 ? 4.8 + rand() * 2.5 : 3.6 + rand() * 2;
+    const alpha = 0.9;
 
     points.push({ x, y, z, color, size, alpha });
   }

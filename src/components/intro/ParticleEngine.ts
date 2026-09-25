@@ -1,19 +1,26 @@
 // ParticleEngine.ts
-// Continuous Scroll-Driven 2D/3D Particle Morphing Engine
-// Renders persistent triangular glyphs with spring-damping physics,
-// deterministic shape targets, and bidirectional scroll interpolation.
+// Clean spring-physics particle engine with deterministic shape targets
+// Single persistent particle system that morphs between states via scroll
 
 import {
   TargetPoint,
-  generateBrainPoints,
-  generateScatterPoints,
-  generateClusterPoints,
-  generateBulbPoints,
-  generateInvestigationPoints,
-  generateRecommendationPoints,
-  generateApprovalGatePoints,
-  generateResolutionPoints,
+  generateBrainTargets,
+  generateScatterTargets,
+  generateClusterTargets,
+  generateBulbTargets,
+  generateInvestigationTargets,
+  generateRecommendationTargets,
+  generateResolutionTargets,
 } from './ParticleTargets';
+
+export type ShapeName =
+  | 'brain'
+  | 'scatter'
+  | 'clusters'
+  | 'bulb'
+  | 'investigation'
+  | 'recommendation'
+  | 'resolution';
 
 export interface Particle {
   id: number;
@@ -47,39 +54,36 @@ export class ParticleEngine {
   public dpr = 1;
   public particleCount = 2400;
   public time = 0;
-  public mouseX = -1000;
-  public mouseY = -1000;
 
   // Perspective Camera
   public fov = 650;
   public cameraZ = 750;
 
-  // Spring Physics Tuning
+  // Spring Physics
   public springStrength = 0.085;
   public damping = 0.82;
-  public noiseScale = 1.4;
+  public noiseScale = 1.2;
 
-  // Master State Targets (8 States)
+  // Shape Targets (7 core states)
   public brainTargets: TargetPoint[] = [];
   public scatterTargets: TargetPoint[] = [];
   public clusterTargets: TargetPoint[] = [];
   public bulbTargets: TargetPoint[] = [];
   public investigationTargets: TargetPoint[] = [];
   public recommendationTargets: TargetPoint[] = [];
-  public approvalTargets: TargetPoint[] = [];
   public resolutionTargets: TargetPoint[] = [];
 
-  // Manual Test Mode (null for normal scroll control; 0..7 to freeze/test a specific shape)
-  public manualTargetIndex: number | null = null;
+  // Manual test mode
+  public manualShape: ShapeName | null = null;
 
-  // Status Telemetry
-  public currentSceneName = 'HERO_BRAIN';
-  public transitionRatio = 0;
-  public isSettled = false;
+  // Telemetry
+  public currentShape: ShapeName = 'brain';
+  public transitionProgress = 0;
+  public isTransitioning = false;
 
-  constructor() {
-    // Initialized via init()
-  }
+  private lastValidTargets: Map<ShapeName, TargetPoint[]> = new Map();
+
+  constructor() {}
 
   public init(width: number, height: number, isMobile = false) {
     this.width = width;
@@ -87,26 +91,22 @@ export class ParticleEngine {
     this.particleCount = isMobile ? 1200 : 2400;
     this.particles = [];
 
-    // Precompute all 8 verified deterministic point cloud target maps
     this.generateAllTargets();
+    this.validateAllTargets();
 
-    // Spawn persistent particles directly at their brain target positions
+    // Spawn particles at brain targets
     for (let i = 0; i < this.particleCount; i++) {
-      const bTarget = this.brainTargets[i] || { x: 0, y: 0, z: 0, color: '#8052ff', size: 4.5, alpha: 0.85 };
-      const jitter = 25; // Gentle initial jitter
-
-      const px = bTarget.x + (Math.random() - 0.5) * jitter;
-      const py = bTarget.y + (Math.random() - 0.5) * jitter;
-      const pz = bTarget.z + (Math.random() - 0.5) * jitter;
+      const bTarget = this.brainTargets[i] || { x: 0, y: 0, z: 0, color: '#8052ff', size: 4, alpha: 0.85 };
+      const jitter = 20;
 
       this.particles.push({
         id: i,
-        x: px,
-        y: py,
-        z: pz,
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: (Math.random() - 0.5) * 1.5,
-        vz: (Math.random() - 0.5) * 1.5,
+        x: bTarget.x + (Math.random() - 0.5) * jitter,
+        y: bTarget.y + (Math.random() - 0.5) * jitter,
+        z: bTarget.z + (Math.random() - 0.5) * jitter,
+        vx: (Math.random() - 0.5) * 1,
+        vy: (Math.random() - 0.5) * 1,
+        vz: (Math.random() - 0.5) * 1,
         targetX: bTarget.x,
         targetY: bTarget.y,
         targetZ: bTarget.z,
@@ -117,8 +117,8 @@ export class ParticleEngine {
         opacity: bTarget.alpha,
         targetOpacity: bTarget.alpha,
         rotation: Math.random() * Math.PI * 2,
-        vRotation: (Math.random() - 0.5) * 0.04,
-        hasInner: Math.random() < 0.30,
+        vRotation: (Math.random() - 0.5) * 0.03,
+        hasInner: Math.random() < 0.3,
         noiseSeedX: Math.random() * 1000,
         noiseSeedY: Math.random() * 1000,
         noiseSeedZ: Math.random() * 1000,
@@ -137,26 +137,68 @@ export class ParticleEngine {
     }
 
     this.generateAllTargets();
+    this.validateAllTargets();
   }
 
-  // Precompute target maps for all 8 visual phases
   private generateAllTargets() {
-    this.brainTargets = generateBrainPoints(this.particleCount, this.width, this.height);
-    this.scatterTargets = generateScatterPoints(this.particleCount, this.width, this.height);
-    this.clusterTargets = generateClusterPoints(this.particleCount, this.width, this.height);
-    this.bulbTargets = generateBulbPoints(this.particleCount, this.width, this.height);
-    this.investigationTargets = generateInvestigationPoints(this.particleCount, this.width, this.height);
-    this.recommendationTargets = generateRecommendationPoints(this.particleCount, this.width, this.height);
-    this.approvalTargets = generateApprovalGatePoints(this.particleCount, this.width, this.height);
-    this.resolutionTargets = generateResolutionPoints(this.particleCount, this.width, this.height);
+    this.brainTargets = generateBrainTargets(this.particleCount, this.width, this.height);
+    this.scatterTargets = generateScatterTargets(this.particleCount, this.width, this.height);
+    this.clusterTargets = generateClusterTargets(this.particleCount, this.width, this.height);
+    this.bulbTargets = generateBulbTargets(this.particleCount, this.width, this.height);
+    this.investigationTargets = generateInvestigationTargets(this.particleCount, this.width, this.height);
+    this.recommendationTargets = generateRecommendationTargets(this.particleCount, this.width, this.height);
+    this.resolutionTargets = generateResolutionTargets(this.particleCount, this.width, this.height);
   }
 
-  // Manual Test Mode setter
-  public setManualTarget(index: number | null) {
-    this.manualTargetIndex = index;
+  private validateAllTargets() {
+    const shapes: ShapeName[] = ['brain', 'scatter', 'clusters', 'bulb', 'investigation', 'recommendation', 'resolution'];
+    for (const shape of shapes) {
+      const targets = this.getTargetsForShape(shape);
+      if (this.isValidTarget(targets)) {
+        this.lastValidTargets.set(shape, targets.map(t => ({ ...t })));
+      }
+    }
   }
 
-  // Impulse shockwave (e.g. on click)
+  private isValidTarget(targets: TargetPoint[]): boolean {
+    if (!targets || targets.length !== this.particleCount) return false;
+    for (const t of targets) {
+      if (!t || !isFinite(t.x) || !isFinite(t.y) || !isFinite(t.z)) return false;
+    }
+    return true;
+  }
+
+  private getTargetsForShape(shape: ShapeName): TargetPoint[] {
+    switch (shape) {
+      case 'brain': return this.brainTargets;
+      case 'scatter': return this.scatterTargets;
+      case 'clusters': return this.clusterTargets;
+      case 'bulb': return this.bulbTargets;
+      case 'investigation': return this.investigationTargets;
+      case 'recommendation': return this.recommendationTargets;
+      case 'resolution': return this.resolutionTargets;
+      default: return this.brainTargets;
+    }
+  }
+
+  public setManualShape(shape: ShapeName | null) {
+    this.manualShape = shape;
+  }
+
+  // Public methods for debug panel
+  public triggerDisperseAndReform(impulse = 1.0) {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      const angle = Math.random() * Math.PI * 2;
+      const power = 15 * impulse;
+      p.vx += Math.cos(angle) * power;
+      p.vy += Math.sin(angle) * power;
+      p.vz += (Math.random() - 0.5) * power * 0.8;
+    }
+    this.isTransitioning = true;
+    this.transitionProgress = 0;
+  }
+
   public triggerShockwave(screenX: number, screenY: number, force = 75) {
     const centerX = this.width * 0.5;
     const centerY = this.height * 0.5;
@@ -178,106 +220,93 @@ export class ParticleEngine {
     }
   }
 
-  // Master Update Loop: Continuous bidirectional scroll-driven morphology
-  public update(smoothScrollProgress: number, dt: number) {
+  public regenerateTargets() {
+    this.generateAllTargets();
+    this.validateAllTargets();
+  }
+
+  // Made public for debug panel
+  public generateAllTargetsPublic() {
+    this.generateAllTargets();
+  }
+
+  public validateAllTargetsPublic() {
+    this.validateAllTargets();
+  }
+
+  public getTargets(shape: ShapeName): TargetPoint[] {
+    const targets = this.getTargetsForShape(shape);
+    if (!this.isValidTarget(targets)) {
+      const fallback = this.lastValidTargets.get(shape);
+      if (fallback) return fallback;
+      return this.brainTargets;
+    }
+    return targets;
+  }
+
+  // Spring physics update with scroll-driven interpolation
+  public update(scrollProgress: number, dt: number) {
     this.time += dt;
 
-    // 1. Resolve State A and State B based on Timeline or Manual Override
-    let stateA: TargetPoint[];
-    let stateB: TargetPoint[];
-    let t: number; // 0.0 to 1.0 transition ratio
+    // Determine current shape and transition
+    let shapeA: ShapeName;
+    let shapeB: ShapeName;
+    let t: number;
 
-    if (this.manualTargetIndex !== null) {
-      // Manual test mode: freeze directly at chosen shape
-      const targetArrays = [
-        this.brainTargets,
-        this.scatterTargets,
-        this.clusterTargets,
-        this.bulbTargets,
-        this.investigationTargets,
-        this.recommendationTargets,
-        this.approvalTargets,
-        this.resolutionTargets,
-      ];
-      const safeIdx = Math.max(0, Math.min(targetArrays.length - 1, this.manualTargetIndex));
-      stateA = targetArrays[safeIdx];
-      stateB = targetArrays[safeIdx];
+    if (this.manualShape) {
+      shapeA = this.manualShape;
+      shapeB = this.manualShape;
       t = 0;
-      this.currentSceneName = `MANUAL_MODE_${safeIdx}`;
-      this.transitionRatio = 0;
+      this.currentShape = this.manualShape;
+      this.transitionProgress = 0;
+      this.isTransitioning = false;
     } else {
-      // MASTER SCENE TIMELINE:
-      // [0.00 – 0.14]: HERO / BRAIN
-      // [0.14 – 0.27]: BRAIN → SCATTER
-      // [0.27 – 0.42]: SCATTER → CLUSTERS
-      // [0.42 – 0.56]: CLUSTERS → BULB
-      // [0.56 – 0.69]: BULB → INVESTIGATION NETWORK
-      // [0.69 – 0.83]: INVESTIGATION → RECOMMENDATION
-      // [0.83 – 0.94]: RECOMMENDATION → APPROVAL GATE
-      // [0.94 – 1.00]: APPROVAL GATE → RESOLUTION STATE
+      const p = Math.max(0, Math.min(1, scrollProgress));
 
-      const p = Math.max(0, Math.min(1.0, smoothScrollProgress));
+      // Scene timeline (7 core scenes mapped to 0-1)
+      // 0.00-0.12: BRAIN
+      // 0.12-0.24: BRAIN -> SCATTER
+      // 0.24-0.36: SCATTER -> CLUSTERS
+      // 0.36-0.48: CLUSTERS -> BULB
+      // 0.48-0.60: BULB -> INVESTIGATION
+      // 0.60-0.72: INVESTIGATION -> RECOMMENDATION
+      // 0.72-0.84: RECOMMENDATION -> RESOLUTION
+      // 0.84-1.00: RESOLUTION
 
-      if (p <= 0.14) {
-        stateA = this.brainTargets;
-        stateB = this.brainTargets;
-        t = 0;
-        this.currentSceneName = 'HERO_BRAIN';
-      } else if (p <= 0.27) {
-        stateA = this.brainTargets;
-        stateB = this.scatterTargets;
-        t = (p - 0.14) / 0.13;
-        this.currentSceneName = 'BRAIN_TO_SCATTER';
-      } else if (p <= 0.42) {
-        stateA = this.scatterTargets;
-        stateB = this.clusterTargets;
-        t = (p - 0.27) / 0.15;
-        this.currentSceneName = 'SCATTER_TO_CLUSTERS';
-      } else if (p <= 0.56) {
-        stateA = this.clusterTargets;
-        stateB = this.bulbTargets;
-        t = (p - 0.42) / 0.14;
-        this.currentSceneName = 'CLUSTERS_TO_BULB';
-      } else if (p <= 0.69) {
-        stateA = this.bulbTargets;
-        stateB = this.investigationTargets;
-        t = (p - 0.56) / 0.13;
-        this.currentSceneName = 'BULB_TO_INVESTIGATION';
-      } else if (p <= 0.83) {
-        stateA = this.investigationTargets;
-        stateB = this.recommendationTargets;
-        t = (p - 0.69) / 0.14;
-        this.currentSceneName = 'INVESTIGATION_TO_RECOMMENDATION';
-      } else if (p <= 0.94) {
-        stateA = this.recommendationTargets;
-        stateB = this.approvalTargets;
-        t = (p - 0.83) / 0.11;
-        this.currentSceneName = 'RECOMMENDATION_TO_APPROVAL';
+      if (p <= 0.12) {
+        shapeA = 'brain'; shapeB = 'brain'; t = 0; this.currentShape = 'brain';
+      } else if (p <= 0.24) {
+        shapeA = 'brain'; shapeB = 'scatter'; t = (p - 0.12) / 0.12; this.currentShape = 'brain';
+      } else if (p <= 0.36) {
+        shapeA = 'scatter'; shapeB = 'clusters'; t = (p - 0.24) / 0.12; this.currentShape = 'scatter';
+      } else if (p <= 0.48) {
+        shapeA = 'clusters'; shapeB = 'bulb'; t = (p - 0.36) / 0.12; this.currentShape = 'clusters';
+      } else if (p <= 0.60) {
+        shapeA = 'bulb'; shapeB = 'investigation'; t = (p - 0.48) / 0.12; this.currentShape = 'bulb';
+      } else if (p <= 0.72) {
+        shapeA = 'investigation'; shapeB = 'recommendation'; t = (p - 0.60) / 0.12; this.currentShape = 'investigation';
+      } else if (p <= 0.84) {
+        shapeA = 'recommendation'; shapeB = 'resolution'; t = (p - 0.72) / 0.12; this.currentShape = 'recommendation';
       } else {
-        stateA = this.approvalTargets;
-        stateB = this.resolutionTargets;
-        t = (p - 0.94) / 0.06;
-        this.currentSceneName = 'APPROVAL_TO_RESOLUTION';
+        shapeA = 'resolution'; shapeB = 'resolution'; t = 0; this.currentShape = 'resolution';
       }
 
-      this.transitionRatio = t;
+      this.transitionProgress = t;
+      this.isTransitioning = t > 0.01 && t < 0.99;
     }
 
-    // Smooth cubic easing for interpolation between target states
     const easedT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-    // 2. Physics & Morphing Update Loop
+    const targetsA = this.getTargets(shapeA);
+    const targetsB = this.getTargets(shapeB);
+
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
-      const targetA = stateA[i] || stateA[0];
-      const targetB = stateB[i] || stateB[0];
+      const targetA = targetsA[i] || targetsA[0];
+      const targetB = targetsB[i] || targetsB[0];
 
-      // Safe fallback if target coordinate is invalid
-      if (!targetA || isNaN(targetA.x) || !targetB || isNaN(targetB.x)) {
-        continue;
-      }
+      if (!targetA || !isFinite(targetA.x) || !targetB || !isFinite(targetB.x)) continue;
 
-      // Linear interpolation between shape targets A and B
       const targetX = targetA.x + (targetB.x - targetA.x) * easedT;
       const targetY = targetA.y + (targetB.y - targetA.y) * easedT;
       const targetZ = targetA.z + (targetB.z - targetA.z) * easedT;
@@ -286,12 +315,11 @@ export class ParticleEngine {
       p.targetY = targetY;
       p.targetZ = targetZ;
 
-      // Color, Size, and Opacity interpolation
       p.targetColor = easedT < 0.5 ? targetA.color : targetB.color;
       p.targetSize = targetA.size + (targetB.size - targetA.size) * easedT;
       p.targetOpacity = targetA.alpha + (targetB.alpha - targetA.alpha) * easedT;
 
-      // Subtle organic harmonic noise around target (never overpowers target)
+      // Subtle organic noise (never overpowers target)
       const noiseX = Math.sin(this.time * 1.6 + p.noiseSeedX) * this.noiseScale;
       const noiseY = Math.cos(this.time * 1.4 + p.noiseSeedY) * this.noiseScale;
       const noiseZ = Math.sin(this.time * 1.2 + p.noiseSeedZ) * this.noiseScale;
@@ -300,7 +328,6 @@ export class ParticleEngine {
       const destY = p.targetY + noiseY;
       const destZ = p.targetZ + noiseZ;
 
-      // Spring-like physics toward target
       const forceX = (destX - p.x) * this.springStrength;
       const forceY = (destY - p.y) * this.springStrength;
       const forceZ = (destZ - p.z) * this.springStrength;
@@ -313,17 +340,13 @@ export class ParticleEngine {
       p.y += p.vy;
       p.z += p.vz;
 
-      // Size and color lerp
       p.size += (p.targetSize - p.size) * 0.15;
       p.color = p.targetColor;
       p.opacity += (p.targetOpacity - p.opacity) * 0.15;
-
-      // Subtle rotation
       p.rotation += p.vRotation;
     }
   }
 
-  // Render to canvas with perspective projection and triangular glyphs
   public render(ctx: CanvasRenderingContext2D) {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
@@ -334,18 +357,16 @@ export class ParticleEngine {
     const fov = this.fov;
     const camZ = this.cameraZ;
 
-    // Render Point-Cloud Particles as HOLLOW OUTLINED TRIANGLES WITH SUBTLE FILL
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
 
       const zDist = camZ + p.z;
-      if (zDist <= 10) continue; // Behind camera clipping
+      if (zDist <= 10) continue;
 
       const scale = fov / zDist;
       const screenX = centerX + p.x * scale;
       const screenY = centerY + p.y * scale;
 
-      // Triangle local vertices
       const s = p.size * scale;
       const h = s * 1.15;
 
@@ -360,34 +381,33 @@ export class ParticleEngine {
       const p1 = { x: screenX + (v1.x * cosR - v1.y * sinR), y: screenY + (v1.x * sinR + v1.y * cosR) };
       const p2 = { x: screenX + (v2.x * cosR - v2.y * sinR), y: screenY + (v2.x * sinR + v2.y * cosR) };
 
-      // Path
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
       ctx.closePath();
 
-      // Subtle translucent fill
+      // Subtle fill
       ctx.fillStyle = p.color;
-      ctx.globalAlpha = Math.min(0.35, p.opacity * 0.28);
+      ctx.globalAlpha = Math.min(0.3, p.opacity * 0.25);
       ctx.fill();
 
-      // Crisp outlined triangle stroke
+      // Crisp stroke
       ctx.strokeStyle = p.color;
-      ctx.lineWidth = Math.max(0.85, 1.35 * scale);
-      ctx.globalAlpha = Math.min(1.0, p.opacity * 1.15);
+      ctx.lineWidth = Math.max(0.8, 1.2 * scale);
+      ctx.globalAlpha = Math.min(1.0, p.opacity * 1.1);
       ctx.stroke();
 
-      // Inner concentric triangle for high-density tech aesthetic
-      if (p.hasInner && scale > 0.72) {
+      // Inner triangle for density
+      if (p.hasInner && scale > 0.7) {
         ctx.beginPath();
         ctx.moveTo((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
         ctx.lineTo((p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
         ctx.lineTo((p2.x + p0.x) * 0.5, (p2.y + p0.y) * 0.5);
         ctx.closePath();
         ctx.strokeStyle = p.color;
-        ctx.lineWidth = 0.75;
-        ctx.globalAlpha = p.opacity * 0.45;
+        ctx.lineWidth = 0.6;
+        ctx.globalAlpha = p.opacity * 0.4;
         ctx.stroke();
       }
     }

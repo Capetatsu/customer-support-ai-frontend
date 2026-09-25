@@ -1,49 +1,46 @@
 // ParticleCanvas.tsx
-// Persistent, pinned full-screen canvas that renders the living particle system.
-// Connects user pointer interactions, dynamic re-formation triggers, and 60fps rendering.
+// Persistent Canvas 2D renderer for the particle system
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { ParticleEngine } from './ParticleEngine';
 
 export interface ParticleCanvasHandle {
+  setManualShape: (shape: string | null) => void;
   triggerReform: (impulse?: number) => void;
   triggerShockwave: (x: number, y: number, force?: number) => void;
-  getFormationStatus: () => { progress: number; isForming: boolean; stage: number };
+  getEngine: () => ParticleEngine | null;
 }
 
 interface ParticleCanvasProps {
   progress: number; // 0.0 to 1.0 smooth scroll progress
-  onFormationStatusChange?: (status: { progress: number; isForming: boolean; stage: number }) => void;
+  onStatusChange?: (status: { shape: string; transition: number; forming: boolean }) => void;
 }
 
 export const ParticleCanvas = forwardRef<ParticleCanvasHandle, ParticleCanvasProps>(
-  ({ progress, onFormationStatusChange }, ref) => {
+  ({ progress, onStatusChange }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const engineRef = useRef<ParticleEngine | null>(null);
     const animFrameRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(performance.now());
     const progressRef = useRef<number>(progress);
-    const lastStageRef = useRef<number>(-1);
-    const lastIsFormingRef = useRef<boolean>(false);
+    const lastShapeRef = useRef<string>('');
+    const lastFormingRef = useRef<boolean>(false);
 
-    // Keep progressRef in sync
     useEffect(() => {
       progressRef.current = progress;
     }, [progress]);
 
-    // Imperative API for IntroShell / IntroNavigation
     useImperativeHandle(ref, () => ({
+      setManualShape: (shape: string | null) => {
+        engineRef.current?.setManualShape(shape as any);
+      },
       triggerReform: (impulse = 1.0) => {
-        engineRef.current?.triggerDisperseAndReform(impulse);
+        engineRef.current?.triggerDisperseAndReform?.(impulse);
       },
       triggerShockwave: (x: number, y: number, force = 80) => {
-        engineRef.current?.triggerShockwave(x, y, force);
+        engineRef.current?.triggerShockwave?.(x, y, force);
       },
-      getFormationStatus: () => ({
-        progress: engineRef.current?.formationProgress ?? 1.0,
-        isForming: engineRef.current?.isForming ?? false,
-        stage: engineRef.current?.currentStageIndex ?? 0,
-      }),
+      getEngine: () => engineRef.current,
     }));
 
     useEffect(() => {
@@ -74,42 +71,30 @@ export const ParticleCanvas = forwardRef<ParticleCanvasHandle, ParticleCanvasPro
       window.addEventListener('resize', handleResize);
 
       const handleMouseMove = (e: MouseEvent) => {
-        engine.mouseX = e.clientX - window.innerWidth * 0.5;
-        engine.mouseY = e.clientY - window.innerHeight * 0.5;
-      };
-
-      const handleMouseLeave = () => {
-        engine.mouseX = -1000;
-        engine.mouseY = -1000;
+        // Optional: subtle mouse influence
       };
 
       const handlePointerDown = (e: MouseEvent) => {
-        engine.triggerShockwave(e.clientX, e.clientY, 85);
+        engine.triggerShockwave?.(e.clientX, e.clientY, 85);
       };
 
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseleave', handleMouseLeave);
       window.addEventListener('pointerdown', handlePointerDown);
 
-      // Animation Loop
       const loop = (now: number) => {
         const dt = Math.min((now - lastTimeRef.current) / 1000, 0.05);
         lastTimeRef.current = now;
 
         engine.update(progressRef.current, dt);
-        engine.render(ctx, progressRef.current);
+        engine.render(ctx);
 
-        // Notify parent only when stage or isForming changes to avoid React re-render thrashing
-        if (
-          onFormationStatusChange &&
-          (engine.currentStageIndex !== lastStageRef.current || engine.isForming !== lastIsFormingRef.current)
-        ) {
-          lastStageRef.current = engine.currentStageIndex;
-          lastIsFormingRef.current = engine.isForming;
-          onFormationStatusChange({
-            progress: engine.formationProgress,
-            isForming: engine.isForming,
-            stage: engine.currentStageIndex,
+        if (onStatusChange &&
+            (engine.currentShape !== lastShapeRef.current || engine.isTransitioning !== lastFormingRef.current)) {
+          lastShapeRef.current = engine.currentShape;
+          lastFormingRef.current = engine.isTransitioning;
+          onStatusChange({
+            shape: engine.currentShape,
+            transition: engine.transitionProgress,
+            forming: engine.isTransitioning,
           });
         }
 
@@ -119,12 +104,8 @@ export const ParticleCanvas = forwardRef<ParticleCanvasHandle, ParticleCanvasPro
       animFrameRef.current = requestAnimationFrame(loop);
 
       return () => {
-        if (animFrameRef.current) {
-          cancelAnimationFrame(animFrameRef.current);
-        }
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         window.removeEventListener('resize', handleResize);
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseleave', handleMouseLeave);
         window.removeEventListener('pointerdown', handlePointerDown);
       };
     }, []);
